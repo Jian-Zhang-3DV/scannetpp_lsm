@@ -1,10 +1,10 @@
 # folder where the data is downloaded
-data_root: DATA_ROOT
+data_root: ../../data/scannetpp
 
 # Set True to render depth for iphone frames
-render_iphone: True
+render_iphone: False
 # Set True to render depth for dslr frames
-render_dslr: False
+render_dslr: True
 
 splits: [nvs_sem_train, nvs_sem_val]
 
@@ -16,4 +16,7 @@ near: 0.05
 far: 20.0
 
 # Output directory for the rendered depth images. If not given, the output will be saved to data folder in data_root
-# output_dir: OUTPUT_DIR
+output_dir: ../../data/scannetpp_render
+
+# Number of threads to use for rendering
+num_threads: 64
