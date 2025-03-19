@@ -40,16 +40,16 @@ def upsample_rasterization(pix_to_face, zbuf, img_height, img_width):
 
     return pix_to_face, zbuf
 
-def get_opencv_cameras_batch(poses, img_height, img_width, intrinsic_mat):
-    R = torch.Tensor(poses[:, :3, :3])
-    T = torch.Tensor(poses[:, :3, 3])
+def get_opencv_cameras_batch(poses, img_height, img_width, intrinsic_mat, device):
+    R = torch.Tensor(poses[:, :3, :3]).to(device)
+    T = torch.Tensor(poses[:, :3, 3]).to(device)
 
     bsize = R.shape[0]
 
     # create camera with opencv function
-    image_size = torch.Tensor((img_height, img_width))
-    image_size_repeat = torch.tile(image_size.reshape(-1, 2), (bsize, 1))
-    intrinsic_repeat = torch.Tensor(intrinsic_mat).unsqueeze(0).expand(bsize, -1, -1)
+    image_size = torch.Tensor((img_height, img_width)).to(device)
+    image_size_repeat = torch.tile(image_size.reshape(-1, 2), (bsize, 1)).to(device)
+    intrinsic_repeat = torch.Tensor(intrinsic_mat).unsqueeze(0).expand(bsize, -1, -1).to(device)
     
     opencv_cameras = cameras_from_opencv_projection(
         # N, 3, 3
@@ -168,7 +168,7 @@ def get_fisheye_cameras_batch(poses, img_width, img_height, intrinsic_mat, disto
 
     return fisheye_cameras
 
-def rasterize_mesh(meshes, img_height, img_width, cameras):
+def rasterize_mesh(meshes, img_height, img_width, cameras, device):
     raster_settings = RasterizationSettings(image_size=(img_height, img_width), 
                                                     blur_radius=0.0, 
                                                     faces_per_pixel=1,
