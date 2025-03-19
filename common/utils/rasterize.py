@@ -181,10 +181,10 @@ def rasterize_mesh(meshes, img_height, img_width, cameras):
         raster_out = rasterizer(meshes, cameras=cameras.to(device))
 
     raster_out_dict = {
-        'pix_to_face': raster_out.pix_to_face.cpu(),
-        'zbuf': raster_out.zbuf.cpu(),
-        'bary_coords': raster_out.bary_coords.cpu(),
-        'dists': raster_out.dists.cpu(),
+        'pix_to_face': raster_out.pix_to_face,
+        'zbuf': raster_out.zbuf,
+        # 'bary_coords': raster_out.bary_coords.cpu(),
+        # 'dists': raster_out.dists.cpu(),
     }
 
     return raster_out_dict

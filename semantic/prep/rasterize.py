@@ -80,6 +80,11 @@ def main(cfg : DictConfig) -> None:
         
         (rasterout_dir / scene_id).mkdir(parents=True, exist_ok=True)
 
+        # pre-create base mesh tensors, ensure they exist before any batch processing
+        with torch.no_grad():
+            base_verts = torch.tensor(verts, dtype=torch.float32, device=device).unsqueeze(0)
+            base_faces = torch.tensor(faces, dtype=torch.int64, device=device).unsqueeze(0)
+
         for batch_ndx, batch_start_ndx in enumerate(tqdm(batch_start_indices, desc='batch', leave=False)):
             if cfg.limit_batches == batch_ndx:
                 print(f'Done with {cfg.limit_batches} batches, finish')
@@ -119,27 +124,34 @@ def main(cfg : DictConfig) -> None:
 
             bsize = len(batch_image_list)
 
-            # repeat meshes N times for N images in the batch
-            meshes_verts = torch.Tensor(np.array([verts for _ in range(bsize)]))
-            meshes_faces = torch.Tensor(np.array([faces for _ in range(bsize)]))
-            meshes_batch = Meshes(verts=meshes_verts, faces=meshes_faces).to(device)
+            # expand the base mesh to the batch size
+            if bsize > 1:
+                meshes_verts = base_verts.expand(bsize, -1, -1)  # expand to batch size
+                meshes_faces = base_faces.expand(bsize, -1, -1)  # expand to batch size
+            else:
+                # if batch size is 1, no need to expand
+                meshes_verts = base_verts
+                meshes_faces = base_faces
+                
+            # create mesh batch
+            with torch.no_grad():  # add no_grad to ensure no gradient calculation
+                meshes_batch = Meshes(verts=meshes_verts, faces=meshes_faces)
+            
+            raster_out_dict = rasterize_mesh(meshes_batch, img_height, img_width, cameras_batch)
+            
+            # save each to file in the correct order
+            keep_keys = 'pix_to_face', 'zbuf'
+            for sample_ndx, raster_out_path in enumerate(rasterout_paths_batch):
+                print(f'Saving to: {raster_out_path}')
+                sample_data = {k: raster_out_dict[k][sample_ndx].squeeze() for k in keep_keys}
+                # subtract #faces from valid faces (pix_to_face) to get the correct face index
+                pix_to_face = sample_data['pix_to_face']
+                valid_pix_to_face =  pix_to_face[:, :] != -1
+                num_faces = meshes_faces.size(1)
+                pix_to_face[valid_pix_to_face] -= (num_faces * sample_ndx)
+                sample_data['pix_to_face'] = pix_to_face
+                torch.save(sample_data, raster_out_path)
 
-            with Timer():
-                # NOTE!!: with bsize>1, output indices are into the batch mesh, subtract to get back indices into mesh
-                raster_out_dict = rasterize_mesh(meshes_batch, img_height, img_width, cameras_batch)
-                # save each to file in the correct order
-                keep_keys = 'pix_to_face', 'zbuf'
-                for sample_ndx, raster_out_path in enumerate(rasterout_paths_batch):
-                    print(f'Saving to: {raster_out_path}')
-                    sample_data = {k: raster_out_dict[k][sample_ndx].squeeze() for k in keep_keys}
-                    # subtract #faces from valid faces (pix_to_face) to get the correct face index
-                    pix_to_face = sample_data['pix_to_face']
-                    valid_pix_to_face =  pix_to_face[:, :] != -1
-                    num_faces = meshes_faces.size(1)
-                    pix_to_face[valid_pix_to_face] -= (num_faces * sample_ndx)
-                    sample_data['pix_to_face'] = pix_to_face
-                    torch.save(sample_data, raster_out_path)
-                        
 
 if __name__ == "__main__":
     main()
