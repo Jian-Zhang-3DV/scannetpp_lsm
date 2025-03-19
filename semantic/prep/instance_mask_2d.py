@@ -52,15 +52,8 @@ def main(cfg : DictConfig) -> None:
         print('After excluding scenes:', len(scene_list))
 
     # Create output directories
-    save_dir = Path(cfg.save_dir_root) / cfg.save_dir
-    save_dir.mkdir(parents=True, exist_ok=True)
-    print('Save to dir:', save_dir)
-    
-    instance_mask_dir = save_dir / 'instance_masks'
-    instance_viz_dir = save_dir / 'instance_viz'
-    
-    for dir in [instance_mask_dir, instance_viz_dir]:
-        dir.mkdir(parents=True, exist_ok=True)
+    save_dir_root = Path(cfg.save_dir_root)
+    print('Save root dir:', save_dir_root)
     
     # Temporary directory for rasterization results if needed
     if cfg.save_raster_results:
@@ -73,6 +66,19 @@ def main(cfg : DictConfig) -> None:
     for scene_id in tqdm(scene_list, desc='scene'):
         print(f'Processing scene: {scene_id}')
         scene = ScannetppScene_Release(scene_id, data_root=cfg.data_root)
+        
+        # Create scene-specific directories
+        scene_dir = save_dir_root / scene_id / cfg.image_type
+        
+        # Create instance mask directories
+        instance_mask_dir = scene_dir / 'render_instance'
+        instance_viz_dir = scene_dir / 'render_instance_viz' if cfg.visualize_instance_masks else None
+        
+        instance_mask_dir.mkdir(parents=True, exist_ok=True)
+        if instance_viz_dir:
+            instance_viz_dir.mkdir(parents=True, exist_ok=True)
+            
+        print(f'Saving instance masks to: {instance_mask_dir}')
         
         # Read mesh and get vertex object IDs
         mesh = o3d.io.read_triangle_mesh(str(scene.scan_mesh_path))
@@ -132,10 +138,6 @@ def main(cfg : DictConfig) -> None:
         # Create batches of images for processing
         batch_size = cfg.batch_size
         batch_start_indices = list(range(0, len(image_list), batch_size))
-        
-        # Create instance mask directory for this scene
-        (instance_mask_dir / scene_id).mkdir(parents=True, exist_ok=True)
-        (instance_viz_dir / scene_id).mkdir(parents=True, exist_ok=True)
         
         # Pre-create mesh tensors
         with torch.no_grad():
@@ -197,6 +199,9 @@ def main(cfg : DictConfig) -> None:
                 pix_to_face_adjusted[valid_pix_to_face] -= (num_faces * sample_ndx)
                 pix_to_face = pix_to_face_adjusted
                 
+                # Remove file extension from image name for saving output files
+                base_image_name = Path(image_name).stem
+                
                 # Load image
                 if cfg.image_type == 'iphone':
                     image_dir = scene.iphone_rgb_dir
@@ -245,21 +250,21 @@ def main(cfg : DictConfig) -> None:
                 # Create instance mask
                 instance_mask = pix_obj_ids.astype(np.uint16)  # Use uint16 to support more instance IDs
                 
-                # Save instance mask
-                mask_path = instance_mask_dir / scene_id / f'{image_name}.png'
+                # Save instance mask with cleaned filename
+                mask_path = instance_mask_dir / f'{base_image_name}.png'
                 print(f'Saving instance mask to {mask_path}')
                 cv2.imwrite(str(mask_path), instance_mask)
                 
-                # Create visualization
+                # Create visualization with cleaned filename
                 if cfg.visualize_instance_masks:
-                    viz_path = instance_viz_dir / scene_id / f'{image_name}.png'
+                    viz_path = instance_viz_dir / f'{base_image_name}.png'
                     print(f'Saving visualization to {viz_path}')
                     viz_ids(img, pix_obj_ids, viz_path)
                 
-                # Get bounding boxes if needed
+                # Get bounding boxes if needed, with cleaned filename
                 if cfg.save_instance_bboxes:
                     bboxes_2d = get_bboxes_2d(pix_obj_ids)
-                    bbox_path = instance_mask_dir / scene_id / f'{image_name}_bboxes.json'
+                    bbox_path = instance_mask_dir / f'{base_image_name}_bboxes.json'
                     with open(bbox_path, 'w') as f:
                         json.dump(bboxes_2d, f)
     
