@@ -136,6 +136,42 @@ def process_scene(scene_id, cfg, gpu_id, save_dir_root):
         if len(batch_image_list) == 0:
             continue
             
+        # Skip already processed images if configured
+        if cfg.get('skip_existing', False):
+            # Create paths for all images in the batch
+            mask_paths_batch = [instance_mask_dir / f'{Path(img_name).stem}.png' for img_name in batch_image_list]
+            
+            # Keep track of original batch
+            batch_image_list_orig = copy(batch_image_list)
+            batch_poses_orig = batch_poses.clone()
+            
+            # Filter out existing files
+            images_to_process = []
+            poses_to_process = []
+            
+            for i, (img_name, pose, mask_path) in enumerate(zip(batch_image_list, batch_poses, mask_paths_batch)):
+                if not mask_path.exists():
+                    images_to_process.append(img_name)
+                    poses_to_process.append(pose.unsqueeze(0))
+            
+            # Update batch with only images that need processing
+            batch_image_list = images_to_process
+            
+            if len(poses_to_process) > 0:
+                batch_poses = torch.cat(poses_to_process, dim=0)
+            else:
+                batch_poses = torch.zeros((0,4,4), device=device)
+            
+            # If nothing left to process, skip this batch
+            if len(batch_image_list) == 0:
+                print('Skipping batch - all images already processed')
+                continue
+            
+            # Report skipped files
+            skipped = set(batch_image_list_orig) - set(batch_image_list)
+            if skipped:
+                print(f'Skipping {len(skipped)} existing files')
+        
         print(f'Images in batch: {batch_image_list}')
         
         # Create camera batch - Make sure all inputs are on the same device
